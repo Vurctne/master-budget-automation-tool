@@ -1,0 +1,27 @@
+{
+  "appName": "Master Budget Automation Tool",
+  "appVersion": "1.0.2",
+  "submissionRoute": "Microsoft Store EXE submission",
+  "package": {
+    "type": "EXE",
+    "architecture": "x64",
+    "languages": [
+      "en-au"
+    ],
+    "silentInstallArguments": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
+    "silentUninstallArguments": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
+    "silentInstallRequired": true,
+    "offlineInstallerRequired": true,
+    "requiresAdministrator": false
+  },
+  "support": {
+    "contactEmail": "ivan.wang@education.vic.gov.au"
+  },
+  "artifacts": {
+    "installerBuildScript": "build_store_installer.ps1",
+    "installerScript": "installer/master_budget_tool.iss",
+    "notesForCertification": "store/notes_for_certification.txt",
+    "listingDraft": "store/listing_content.en-AU.md",
+    "privacyPolicyDraft": "store/PRIVACY_POLICY.md"
+  }
+}

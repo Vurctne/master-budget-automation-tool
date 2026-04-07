@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+build/
+build_pyinstaller/
+dist/
+dist_pyinstaller/
+
+.venv/
+venv/
+env/
+
+.DS_Store
+Thumbs.db

@@ -1,0 +1,23 @@
+Master Budget Automation Tool v1.0.2 - User Guide
+
+How to download the Expense Sub-Program Mastersheet from Compass
+1. Open Compass and go to Financial Management.
+2. In the Financial Management Dashboard, select the budget year you want in Selected Financial Period.
+3. Click Financial Periods.
+4. On the Financial Periods page, find the same budget year.
+5. Open the Budget Reports drop-down for that year and select Expense Sub-Program Mastersheet.
+6. Save the downloaded file and use it as the Expense Sub-Program file in this app.
+
+How to use the app
+1. Close the workbook in Excel before running the app.
+2. Open the app.
+3. Select the Expense Sub-Program file.
+4. Select the Master Budget template.
+5. Select a new output workbook file name.
+6. Click Generate budget workbook.
+7. Wait for the progress bar to complete.
+8. Open the output workbook in Excel and review the data.
+
+Use the Instructions button in the app to open the full guide with screenshots.
+
+Please send suggestions to ivan.wang@education.vic.gov.au

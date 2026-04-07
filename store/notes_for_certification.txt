@@ -1,0 +1,14 @@
+No sign-in, activation, or online account is required.
+
+This is an offline desktop budgeting utility for importing local CSV/XLSX/XLSM data into a local Excel workbook.
+
+Reviewer guidance:
+- Launch the app from the Start menu shortcut after installation.
+- Use any local Expense Sub-Program export (.csv, .xlsx, or .xlsm) as the source file.
+- Use any local Master Budget workbook (.xlsx or .xlsm) as the template file.
+- Choose a new local output workbook path and click "Generate budget workbook".
+
+Expected behavior:
+- The app opens local files only and does not require network access.
+- Microsoft Excel is optional. If Excel is installed on Windows, the app preserves original macro button bindings more accurately. If Excel is not installed, the import still works through openpyxl, but native Excel-specific preservation behavior is unavailable.
+- The installer runs per-user and does not require administrator permissions.
