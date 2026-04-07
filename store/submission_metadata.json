@@ -2,17 +2,38 @@
   "appName": "Master Budget Automation Tool",
   "appVersion": "1.0.2",
   "submissionRoute": "Microsoft Store EXE submission",
+  "repository": {
+    "url": "https://github.com/Vurctne/master-budget-automation-tool",
+    "releaseUrl": "https://github.com/Vurctne/master-budget-automation-tool/releases/tag/v1.0.2",
+    "privacyPolicyUrl": "https://github.com/Vurctne/master-budget-automation-tool/blob/main/store/PRIVACY_POLICY.md"
+  },
   "package": {
     "type": "EXE",
     "architecture": "x64",
     "languages": [
       "en-au"
     ],
+    "installerFileName": "MasterBudgetAutomationTool_Setup_1.0.2.exe",
+    "installerUrl": "https://github.com/Vurctne/master-budget-automation-tool/releases/download/v1.0.2/MasterBudgetAutomationTool_Setup_1.0.2.exe",
+    "installerSha256": "E3D8E55489494C47C6CFA4E2E463FBA27983E80E7263763998F8627646A12100",
+    "portableFileName": "Master Budget Automation Tool v1.0.2.exe",
+    "portableUrl": "https://github.com/Vurctne/master-budget-automation-tool/releases/download/v1.0.2/Master.Budget.Automation.Tool.v1.0.2.exe",
+    "portableSha256": "E2997E0B66B9637CCAEE2E5EC6880453B360CC149E3567CF86E72D0F7F0AF297",
     "silentInstallArguments": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
     "silentUninstallArguments": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
     "silentInstallRequired": true,
     "offlineInstallerRequired": true,
-    "requiresAdministrator": false
+    "requiresAdministrator": false,
+    "installScope": "per-user",
+    "codeSigningStatus": "pending"
+  },
+  "listing": {
+    "category": "Business",
+    "pricing": "Free",
+    "discoverability": "Available in Microsoft Store",
+    "developedBy": "Ivan Wang",
+    "supportWebsite": "https://github.com/Vurctne/master-budget-automation-tool",
+    "releaseNotesFile": "store/github_release_notes_v1.0.2.md"
   },
   "support": {
     "contactEmail": "ivan.wang@education.vic.gov.au"
@@ -22,6 +43,8 @@
     "installerScript": "installer/master_budget_tool.iss",
     "notesForCertification": "store/notes_for_certification.txt",
     "listingDraft": "store/listing_content.en-AU.md",
-    "privacyPolicyDraft": "store/PRIVACY_POLICY.md"
+    "privacyPolicyDraft": "store/PRIVACY_POLICY.md",
+    "partnerCenterSubmission": "store/PARTNER_CENTER_SUBMISSION_v1.0.2.md",
+    "codeSigningGuide": "store/CODE_SIGNING_GUIDE.md"
   }
 }
