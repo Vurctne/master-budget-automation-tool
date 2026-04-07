@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import gc
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -445,6 +446,14 @@ class BudgetAutomator:
             file_format = 52 if output_path.suffix.lower() == '.xlsm' else 51
             progress(94, 'Saving output workbook...')
             wb.SaveAs(str(output_path.resolve()), FileFormat=file_format, ConflictResolution=2)
+            rebound_buttons = self._rebind_macro_buttons_excel(
+                wb,
+                workbook_names=[template_path.name, temp_template_path.name],
+                output_workbook_name=output_path.name,
+            )
+            if rebound_buttons:
+                progress(96, f'Updating macro button bindings... ({rebound_buttons} item(s))')
+                wb.Save()
             return matched_cells, matched_rows
         except Exception as exc:
             raise BudgetAutomationError(f'Excel save failed: {exc}') from exc
@@ -506,6 +515,72 @@ class BudgetAutomator:
             return True
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
+
+    def _rebind_macro_buttons_excel(
+        self,
+        workbook,
+        workbook_names: List[str],
+        output_workbook_name: str,
+    ) -> int:
+        updated = 0
+        candidates = [name for name in workbook_names if name]
+        if not candidates:
+            return 0
+
+        for sheet in workbook.Sheets:
+            try:
+                shapes = sheet.Shapes
+                shape_count = int(shapes.Count)
+            except Exception:
+                continue
+
+            for index in range(1, shape_count + 1):
+                try:
+                    shape = shapes.Item(index)
+                    on_action = str(shape.OnAction or '').strip()
+                except Exception:
+                    continue
+
+                new_on_action = self._rewrite_shape_on_action(
+                    on_action=on_action,
+                    workbook_names=candidates,
+                    output_workbook_name=output_workbook_name,
+                )
+                if new_on_action and new_on_action != on_action:
+                    try:
+                        shape.OnAction = new_on_action
+                        updated += 1
+                    except Exception:
+                        pass
+
+        return updated
+
+    @staticmethod
+    def _rewrite_shape_on_action(
+        on_action: str,
+        workbook_names: List[str],
+        output_workbook_name: str,
+    ) -> str:
+        action = on_action.strip()
+        if not action or '!' not in action:
+            return action
+
+        workbook_part, macro_part = action.rsplit('!', 1)
+        workbook_part_lower = workbook_part.lower()
+        workbook_match = re.match(r"^'?([^']+?)'?$", workbook_part.strip())
+        normalized_workbook_part = workbook_match.group(1) if workbook_match else workbook_part.strip()
+        normalized_workbook_lower = normalized_workbook_part.lower()
+
+        for workbook_name in workbook_names:
+            workbook_name_lower = workbook_name.lower()
+            if (
+                workbook_name_lower == normalized_workbook_lower
+                or workbook_name_lower in workbook_part_lower
+                or f'[{workbook_name_lower}]' in workbook_part_lower
+            ):
+                return f"'{output_workbook_name}'!{macro_part}"
+
+        return action
 
     def _populate_master_excel(
         self,
