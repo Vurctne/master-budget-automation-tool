@@ -21,16 +21,19 @@ from openpyxl.formula.translate import Translator
 
 try:
     import pythoncom
+    import pywintypes  # type: ignore
     import win32com.client  # type: ignore
     import win32process  # type: ignore
 except Exception:
     pythoncom = None
+    pywintypes = None
     win32com = None
     win32process = None
 
 SUPPORTED_SOURCE_EXTENSIONS = {'.csv', '.xlsx', '.xlsm'}
 SUPPORTED_TARGET_EXTENSIONS = {'.xlsx', '.xlsm'}
 SUPPORTED_CSV_ENCODINGS = ('utf-8-sig', 'utf-8', 'cp1252')
+EXCEL_RETRY_HRESULTS = {-2147418111, -2147417846}
 
 
 @dataclass
@@ -346,6 +349,66 @@ class BudgetAutomator:
     def _can_use_excel_native(self) -> bool:
         return os.name == 'nt' and pythoncom is not None and win32com is not None
 
+    def _is_retryable_excel_error(self, exc: Exception) -> bool:
+        if pywintypes is not None and isinstance(exc, pywintypes.com_error):
+            hresult = getattr(exc, 'hresult', None)
+            if hresult in EXCEL_RETRY_HRESULTS:
+                return True
+
+        args = getattr(exc, 'args', ())
+        if args and isinstance(args[0], int) and args[0] in EXCEL_RETRY_HRESULTS:
+            return True
+
+        text = ' '.join(str(part) for part in args).lower()
+        return (
+            'call was rejected by callee' in text
+            or 'server busy' in text
+            or '拒绝接收呼叫' in text
+        )
+
+    def _call_excel_with_retries(
+        self,
+        action: Callable[[], Any],
+        attempts: int = 20,
+        initial_delay_seconds: float = 0.2,
+    ) -> Any:
+        delay = initial_delay_seconds
+        for attempt in range(1, attempts + 1):
+            try:
+                return action()
+            except Exception as exc:
+                if not self._is_retryable_excel_error(exc) or attempt == attempts:
+                    raise
+                try:
+                    if pythoncom is not None:
+                        pythoncom.PumpWaitingMessages()
+                except Exception:
+                    pass
+                time.sleep(delay)
+                delay = min(delay * 1.5, 1.5)
+
+        raise RuntimeError('Excel retry loop ended unexpectedly.')
+
+    def _copy_file_with_retries(
+        self,
+        source_path: Path,
+        target_path: Path,
+        attempts: int = 20,
+        initial_delay_seconds: float = 0.2,
+    ) -> None:
+        delay = initial_delay_seconds
+        for attempt in range(1, attempts + 1):
+            try:
+                if target_path.exists():
+                    target_path.unlink()
+                shutil.copy2(source_path, target_path)
+                return
+            except PermissionError:
+                if attempt == attempts:
+                    raise
+                time.sleep(delay)
+                delay = min(delay * 1.5, 1.5)
+
     def _run_excel_native(
         self,
         template_path: Path,
@@ -364,7 +427,11 @@ class BudgetAutomator:
         compass_ws = None
         temp_dir = None
         temp_template_path = None
+        temp_output_path = None
         excel_pid: Optional[int] = None
+        matched_cells = 0
+        matched_rows = 0
+        save_completed = False
 
         def progress(percent: int, message: str) -> None:
             if progress_callback is not None:
@@ -376,7 +443,10 @@ class BudgetAutomator:
 
             temp_dir = Path(tempfile.mkdtemp(prefix='budget_automation_'))
             temp_template_path = temp_dir / template_path.name
+            temp_output_path = temp_dir / output_path.name
             shutil.copy2(template_path, temp_template_path)
+            if temp_output_path.exists():
+                temp_output_path.unlink()
 
             excel = win32com.client.DispatchEx('Excel.Application')
             excel.Visible = False
@@ -399,13 +469,15 @@ class BudgetAutomator:
                     excel_pid = None
 
             progress(30, 'Opening workbook in Excel...')
-            wb = excel.Workbooks.Open(
-                str(temp_template_path.resolve()),
-                UpdateLinks=0,
-                ReadOnly=False,
-                IgnoreReadOnlyRecommended=True,
-                AddToMru=False,
-                Notify=False,
+            wb = self._call_excel_with_retries(
+                lambda: excel.Workbooks.Open(
+                    str(temp_template_path.resolve()),
+                    UpdateLinks=0,
+                    ReadOnly=False,
+                    IgnoreReadOnlyRecommended=True,
+                    AddToMru=False,
+                    Notify=False,
+                )
             )
             master_ws = wb.Worksheets(self.master_sheet_name)
             compass_ws = wb.Worksheets(self.compass_sheet_name) if self.compass_sheet_name in [ws.Name for ws in wb.Worksheets] else None
@@ -445,7 +517,13 @@ class BudgetAutomator:
 
             file_format = 52 if output_path.suffix.lower() == '.xlsm' else 51
             progress(94, 'Saving output workbook...')
-            wb.SaveAs(str(output_path.resolve()), FileFormat=file_format, ConflictResolution=2)
+            self._call_excel_with_retries(
+                lambda: wb.SaveAs(
+                    str(temp_output_path.resolve()),
+                    FileFormat=file_format,
+                    ConflictResolution=2,
+                )
+            )
             rebound_buttons = self._rebind_macro_buttons_excel(
                 wb,
                 workbook_names=[template_path.name, temp_template_path.name],
@@ -453,8 +531,8 @@ class BudgetAutomator:
             )
             if rebound_buttons:
                 progress(96, f'Updating macro button bindings... ({rebound_buttons} item(s))')
-                wb.Save()
-            return matched_cells, matched_rows
+                self._call_excel_with_retries(lambda: wb.Save())
+            save_completed = True
         except Exception as exc:
             raise BudgetAutomationError(f'Excel save failed: {exc}') from exc
         finally:
@@ -479,12 +557,23 @@ class BudgetAutomator:
             gc.collect()
             if excel_pid is not None:
                 self._ensure_excel_process_exited(excel_pid)
+        try:
+            if save_completed and temp_output_path is not None:
+                progress(98, 'Copying workbook to the selected output folder...')
+                self._copy_file_with_retries(temp_output_path, output_path)
+        except Exception as exc:
+            raise BudgetAutomationError(
+                f'Workbook was saved in Excel but could not be copied to the selected output folder: {exc}'
+            ) from exc
+        finally:
             if temp_dir is not None:
                 try:
                     shutil.rmtree(temp_dir, ignore_errors=True)
                 except Exception:
                     pass
             pythoncom.CoUninitialize()
+
+        return matched_cells, matched_rows
 
     def _ensure_excel_process_exited(self, pid: int, timeout_seconds: float = 5.0) -> None:
         deadline = time.time() + timeout_seconds
@@ -527,17 +616,19 @@ class BudgetAutomator:
         if not candidates:
             return 0
 
-        for sheet in workbook.Sheets:
+        sheet_count = int(self._call_excel_with_retries(lambda: workbook.Sheets.Count))
+        for sheet_index in range(1, sheet_count + 1):
             try:
-                shapes = sheet.Shapes
-                shape_count = int(shapes.Count)
+                sheet = self._call_excel_with_retries(lambda idx=sheet_index: workbook.Sheets(idx))
+                shapes = self._call_excel_with_retries(lambda current_sheet=sheet: current_sheet.Shapes)
+                shape_count = int(self._call_excel_with_retries(lambda current_shapes=shapes: current_shapes.Count))
             except Exception:
                 continue
 
             for index in range(1, shape_count + 1):
                 try:
-                    shape = shapes.Item(index)
-                    on_action = str(shape.OnAction or '').strip()
+                    shape = self._call_excel_with_retries(lambda idx=index, current_shapes=shapes: current_shapes.Item(idx))
+                    on_action = str(self._call_excel_with_retries(lambda current_shape=shape: current_shape.OnAction or '')).strip()
                 except Exception:
                     continue
 
@@ -548,7 +639,9 @@ class BudgetAutomator:
                 )
                 if new_on_action and new_on_action != on_action:
                     try:
-                        shape.OnAction = new_on_action
+                        self._call_excel_with_retries(
+                            lambda current_shape=shape, action=new_on_action: setattr(current_shape, 'OnAction', action)
+                        )
                         updated += 1
                     except Exception:
                         pass
