@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import csv
+import gc
 import os
 import shutil
+import subprocess
 import tempfile
 import time
+import ctypes
 from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,9 +21,11 @@ from openpyxl.formula.translate import Translator
 try:
     import pythoncom
     import win32com.client  # type: ignore
+    import win32process  # type: ignore
 except Exception:
     pythoncom = None
     win32com = None
+    win32process = None
 
 SUPPORTED_SOURCE_EXTENSIONS = {'.csv', '.xlsx', '.xlsm'}
 SUPPORTED_TARGET_EXTENSIONS = {'.xlsx', '.xlsm'}
@@ -354,8 +359,11 @@ class BudgetAutomator:
         pythoncom.CoInitialize()
         excel = None
         wb = None
+        master_ws = None
+        compass_ws = None
         temp_dir = None
         temp_template_path = None
+        excel_pid: Optional[int] = None
 
         def progress(percent: int, message: str) -> None:
             if progress_callback is not None:
@@ -374,6 +382,7 @@ class BudgetAutomator:
             excel.DisplayAlerts = False
             excel.ScreenUpdating = False
             excel.EnableEvents = False
+            excel.UserControl = False
             try:
                 excel.AskToUpdateLinks = False
             except Exception:
@@ -382,6 +391,11 @@ class BudgetAutomator:
                 excel.AutomationSecurity = 3
             except Exception:
                 pass
+            if win32process is not None:
+                try:
+                    excel_pid = win32process.GetWindowThreadProcessId(excel.Hwnd)[1]
+                except Exception:
+                    excel_pid = None
 
             progress(30, 'Opening workbook in Excel...')
             wb = excel.Workbooks.Open(
@@ -435,11 +449,16 @@ class BudgetAutomator:
         except Exception as exc:
             raise BudgetAutomationError(f'Excel save failed: {exc}') from exc
         finally:
+            compass_ws = None
+            master_ws = None
+            gc.collect()
             try:
                 if wb is not None:
                     wb.Close(SaveChanges=False)
             except Exception:
                 pass
+            wb = None
+            gc.collect()
             try:
                 if excel is not None:
                     excel.ScreenUpdating = True
@@ -447,12 +466,46 @@ class BudgetAutomator:
                     excel.Quit()
             except Exception:
                 pass
+            excel = None
+            gc.collect()
+            if excel_pid is not None:
+                self._ensure_excel_process_exited(excel_pid)
             if temp_dir is not None:
                 try:
                     shutil.rmtree(temp_dir, ignore_errors=True)
                 except Exception:
                     pass
             pythoncom.CoUninitialize()
+
+    def _ensure_excel_process_exited(self, pid: int, timeout_seconds: float = 5.0) -> None:
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            if not self._is_process_running(pid):
+                return
+            time.sleep(0.25)
+
+        subprocess.run(
+            ['taskkill', '/PID', str(pid), '/T', '/F'],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @staticmethod
+    def _is_process_running(pid: int) -> bool:
+        process_query_limited_information = 0x1000
+        synchronize = 0x00100000
+        handle = ctypes.windll.kernel32.OpenProcess(
+            process_query_limited_information | synchronize,
+            False,
+            pid,
+        )
+        if not handle:
+            return False
+        try:
+            return True
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
 
     def _populate_master_excel(
         self,
