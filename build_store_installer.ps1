@@ -5,6 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$releaseWorkPath = Join-Path $root 'build_release'
 
 function Get-PythonCommand {
     if (Get-Command py -ErrorAction SilentlyContinue) {
@@ -41,6 +42,25 @@ function Resolve-InnoSetupCompiler {
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
     )
 
+    try {
+        $registryLocations = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+        )
+
+        foreach ($registryPath in $registryLocations) {
+            Get-ChildItem $registryPath -ErrorAction SilentlyContinue |
+                Get-ItemProperty |
+                Where-Object { $_.DisplayName -like 'Inno Setup*' -and $_.InstallLocation } |
+                ForEach-Object {
+                    $candidates += (Join-Path $_.InstallLocation 'ISCC.exe')
+                }
+        }
+    }
+    catch {
+        # Fall back to the default paths above if registry lookup is unavailable.
+    }
+
     foreach ($candidate in $candidates) {
         if ($candidate -and (Test-Path $candidate)) {
             return (Resolve-Path $candidate).Path
@@ -60,7 +80,7 @@ try {
     }
 
     Write-Host 'Building signed-ready EXE...'
-    Invoke-Python '-m PyInstaller --noconfirm --clean "Master Budget Automation Tool v1.0.2.spec"'
+    Invoke-Python ('-m PyInstaller --noconfirm --clean --workpath "{0}" "Master Budget Automation Tool v1.0.2.spec"' -f $releaseWorkPath)
 
     $compilerPath = Resolve-InnoSetupCompiler -ExplicitPath $InnoSetupCompiler
     Write-Host "Compiling installer with: $compilerPath"
