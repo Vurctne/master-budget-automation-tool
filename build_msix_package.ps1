@@ -231,7 +231,12 @@ function New-TestCertificate {
         -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3')
 
     $pfxPath = Join-Path $distRoot "$($Config.identityName)-test-signing.pfx"
+    $cerPath = Join-Path $distRoot "$($Config.identityName)-test-signing.cer"
     Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $securePassword | Out-Null
+    [System.IO.File]::WriteAllBytes(
+        $cerPath,
+        $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+    )
     $plainPassword = if ($TestCertificatePassword) { $TestCertificatePassword } else { 'Password123!' }
 
     Write-Host "Signing MSIX with test certificate: $pfxPath"
@@ -239,6 +244,8 @@ function New-TestCertificate {
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to sign MSIX package: $MsixPath"
     }
+
+    Write-Host "Matching CER exported: $cerPath"
 }
 
 Push-Location $root
