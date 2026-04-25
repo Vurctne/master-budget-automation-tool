@@ -48,4 +48,4 @@ The screenshots for these steps are available from the **Instructions** button i
 - Microsoft Store submission notes and listing templates are in the `store` folder.
 
 ## Suggestions
-Please send suggestions to ivan.wang@education.vic.gov.au
+Please send suggestions to contact@vurctne.com
